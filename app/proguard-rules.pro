@@ -1,0 +1,6 @@
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
+-keep class kotlin.coroutines.** { *; }
+-dontwarn com.google.firebase.**

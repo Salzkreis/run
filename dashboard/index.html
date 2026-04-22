@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guardian Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg: #07070f;
+      --surface: #0f0f1f;
+      --surface2: #181830;
+      --border: #1e1e3a;
+      --accent: #00b4d8;
+      --accent2: #0096c7;
+      --green: #00e676;
+      --red: #ff1744;
+      --yellow: #ffd600;
+      --text: #e0e0ff;
+      --muted: #6677aa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; overflow: hidden; }
+
+    /* ── Login ── */
+    #login-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100vh; gap: 12px;
+    }
+    #login-screen .logo { font-size: 48px; margin-bottom: 8px; }
+    #login-screen h1 { font-size: 24px; letter-spacing: 4px; color: var(--accent); }
+    #login-screen p { color: var(--muted); margin-bottom: 16px; }
+    .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 340px; display: flex; flex-direction: column; gap: 12px; }
+    input { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--text); font-size: 14px; outline: none; transition: border-color .2s; }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--muted); }
+    .btn { padding: 12px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: opacity .2s; }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    #login-error { color: var(--red); font-size: 13px; text-align: center; display: none; }
+
+    /* ── App Shell ── */
+    #app { display: none; flex-direction: column; height: 100vh; }
+
+    /* Top bar */
+    .topbar {
+      display: flex; align-items: center; gap: 12px; padding: 0 20px;
+      height: 52px; background: var(--surface); border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .topbar .logo-sm { font-size: 20px; }
+    .topbar h1 { font-size: 16px; letter-spacing: 3px; color: var(--accent); flex: 1; }
+    .device-select { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; color: var(--text); font-size: 13px; cursor: pointer; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+    /* Main layout */
+    .main { display: grid; grid-template-columns: 1fr 320px; flex: 1; overflow: hidden; }
+
+    /* Map */
+    #map { width: 100%; height: 100%; }
+
+    /* Right panel */
+    .panel { display: flex; flex-direction: column; gap: 0; overflow-y: auto; border-left: 1px solid var(--border); }
+    .section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .section-title { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+
+    /* Status grid */
+    .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
+    .stat-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+    .stat-value { font-size: 18px; font-weight: 700; color: var(--text); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.yellow { color: var(--yellow); }
+    .stat-value.red { color: var(--red); }
+
+    /* Commands */
+    .cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cmd-btn { padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 12px; transition: all .2s; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .cmd-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cmd-btn .icon { font-size: 20px; }
+    .cmd-btn.active { background: #ff174422; border-color: var(--red); color: var(--red); }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .tab { padding: 8px 16px; font-size: 12px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: all .2s; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Log list */
+    .log-list { max-height: 220px; overflow-y: auto; }
+    .log-item { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .log-item:last-child { border-bottom: none; }
+    .log-number { color: var(--text); font-weight: 600; }
+    .log-meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .log-body { color: var(--muted); font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 270px; }
+
+    /* Media grid */
+    .media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-height: 200px; overflow-y: auto; }
+    .media-thumb { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--surface2); cursor: pointer; position: relative; }
+    .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .media-thumb .audio-icon { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 28px; }
+    .media-thumb .ts { position: absolute; bottom: 2px; right: 4px; font-size: 9px; color: rgba(255,255,255,.7); background: rgba(0,0,0,.5); padding: 1px 3px; border-radius: 3px; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Last seen */
+    .last-seen { font-size: 11px; color: var(--muted); text-align: right; margin-top: 6px; }
+
+    /* Location trail toggle */
+    .trail-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); cursor: pointer; margin-top: 8px; }
+    .trail-toggle input { accent-color: var(--accent); }
+
+    /* Lightbox */
+    #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 9999; align-items: center; justify-content: center; }
+    #lightbox img, #lightbox audio { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+    #lightbox .close { position: absolute; top: 20px; right: 24px; font-size: 28px; cursor: pointer; color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-screen">
+  <div class="logo">⬡</div>
+  <h1>GUARDIAN</h1>
+  <p>Anti-Theft Dashboard</p>
+  <div class="login-box">
+    <input id="email" type="email" placeholder="E-Mail" />
+    <input id="password" type="password" placeholder="Passwort" />
+    <button class="btn btn-primary" onclick="login()">Anmelden</button>
+    <div id="login-error">Falsche E-Mail oder Passwort</div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="topbar">
+    <span class="logo-sm">⬡</span>
+    <h1>GUARDIAN</h1>
+    <div id="status-dot" class="status-dot"></div>
+    <select id="device-select" class="device-select" onchange="selectDevice(this.value)">
+      <option value="">Gerät wählen…</option>
+    </select>
+    <button class="btn btn-ghost" onclick="logout()" style="padding:6px 12px;font-size:12px;">Logout</button>
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+
+    <div class="panel">
+
+      <!-- Status -->
+      <div class="section">
+        <div class="section-title">Gerätestatus</div>
+        <div class="status-grid">
+          <div class="stat">
+            <div class="stat-label">Akku</div>
+            <div id="stat-battery" class="stat-value">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Laden</div>
+            <div id="stat-charging" class="stat-value">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">WLAN</div>
+            <div id="stat-wifi" class="stat-value" style="font-size:13px;">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Mobilfunk</div>
+            <div id="stat-mobile" class="stat-value">–</div>
+          </div>
+        </div>
+        <div id="last-seen" class="last-seen">Zuletzt gesehen: –</div>
+      </div>
+
+      <!-- Location -->
+      <div class="section">
+        <div class="section-title">Standort</div>
+        <div id="location-text" style="font-size:12px;color:var(--muted);">Kein Standort</div>
+        <label class="trail-toggle">
+          <input type="checkbox" id="show-trail" onchange="toggleTrail(this.checked)" />
+          Verlauf anzeigen
+        </label>
+      </div>
+
+      <!-- Commands -->
+      <div class="section">
+        <div class="section-title">Fernsteuerung</div>
+        <div class="cmd-grid">
+          <button class="cmd-btn" onclick="sendCommand('take_photo_front')">
+            <span class="icon">🤳</span>
+            Foto Vorne
+          </button>
+          <button class="cmd-btn" onclick="sendCommand('take_photo_back')">
+            <span class="icon">📷</span>
+            Foto Hinten
+          </button>
+          <button class="cmd-btn" id="btn-record" onclick="toggleRecording()">
+            <span class="icon">🎤</span>
+            Aufnahme
+          </button>
+          <button class="cmd-btn" onclick="sendCommand('refresh_logs')">
+            <span class="icon">🔄</span>
+            Logs sync
+          </button>
+        </div>
+      </div>
+
+      <!-- Media -->
+      <div class="section">
+        <div class="section-title">Medien</div>
+        <div id="media-grid" class="media-grid"></div>
+      </div>
+
+      <!-- Logs -->
+      <div class="section" style="flex:1;display:flex;flex-direction:column;min-height:0">
+        <div class="section-title">Protokolle</div>
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab('calls', this)">Anrufe</div>
+          <div class="tab" onclick="switchTab('sms', this)">SMS</div>
+        </div>
+        <div id="log-calls" class="log-list"></div>
+        <div id="log-sms" class="log-list" style="display:none"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <span class="close">✕</span>
+  <div id="lightbox-content"></div>
+</div>
+
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, collection, doc, onSnapshot, getDocs, setDoc, updateDoc, serverTimestamp, query, orderBy, limit }
+    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // ─── FIREBASE CONFIG – HIER EIGENE WERTE EINTRAGEN ───────────────────────
+  const firebaseConfig = {
+    apiKey:            "DEIN_API_KEY",
+    authDomain:        "DEIN_PROJECT.firebaseapp.com",
+    projectId:         "DEIN_PROJECT_ID",
+    storageBucket:     "DEIN_PROJECT.appspot.com",
+    messagingSenderId: "DEINE_SENDER_ID",
+    appId:             "DEINE_APP_ID"
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Map init
+  const map = L.map('map').setView([51.165, 10.45], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  let currentMarker = null;
+  let trailPolyline = null;
+  let trailLocations = [];
+  let showTrail = false;
+  let currentDevice = null;
+  let deviceUnsubscribe = null;
+  let recordingActive = false;
+
+  // Expose functions to window
+  window.login = async () => {
+    const email = document.getElementById('email').value;
+    const pw = document.getElementById('password').value;
+    try {
+      await signInWithEmailAndPassword(auth, email, pw);
+      document.getElementById('login-error').style.display = 'none';
+    } catch {
+      document.getElementById('login-error').style.display = 'block';
+    }
+  };
+
+  window.logout = async () => {
+    await signOut(auth);
+  };
+
+  window.selectDevice = (deviceId) => {
+    currentDevice = deviceId;
+    if (!deviceId) return;
+    subscribeToDevice(deviceId);
+    loadMedia(deviceId);
+    loadLogs(deviceId);
+  };
+
+  window.sendCommand = async (cmd) => {
+    if (!currentDevice) return alert('Kein Gerät ausgewählt');
+    const ref = doc(db, 'devices', currentDevice);
+    await updateDoc(ref, { [`commands.${cmd}`]: { done: false, ts: serverTimestamp() } });
+  };
+
+  window.toggleRecording = async () => {
+    if (!currentDevice) return;
+    recordingActive = !recordingActive;
+    const cmd = recordingActive ? 'start_recording' : 'stop_recording';
+    const btn = document.getElementById('btn-record');
+    btn.classList.toggle('active', recordingActive);
+    btn.querySelector('.icon').textContent = recordingActive ? '⏹' : '🎤';
+    await window.sendCommand(cmd);
+  };
+
+  window.toggleTrail = (show) => {
+    showTrail = show;
+    if (!show && trailPolyline) { trailPolyline.remove(); trailPolyline = null; }
+    if (show) drawTrail();
+  };
+
+  window.switchTab = (tab, el) => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('log-calls').style.display = tab === 'calls' ? 'block' : 'none';
+    document.getElementById('log-sms').style.display = tab === 'sms' ? 'block' : 'none';
+  };
+
+  window.closeLightbox = () => {
+    document.getElementById('lightbox').style.display = 'none';
+    document.getElementById('lightbox-content').innerHTML = '';
+  };
+
+  // Auth state
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      await loadDevices();
+    } else {
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+    }
+  });
+
+  async function loadDevices() {
+    const snap = await getDocs(collection(db, 'devices'));
+    const sel = document.getElementById('device-select');
+    sel.innerHTML = '<option value="">Gerät wählen…</option>';
+    snap.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.id;
+      sel.appendChild(opt);
+    });
+    if (snap.size === 1) {
+      sel.value = snap.docs[0].id;
+      window.selectDevice(snap.docs[0].id);
+    }
+  }
+
+  function subscribeToDevice(deviceId) {
+    if (deviceUnsubscribe) deviceUnsubscribe();
+    deviceUnsubscribe = onSnapshot(doc(db, 'devices', deviceId), (snap) => {
+      const data = snap.data();
+      if (!data) return;
+      updateStatus(data.status);
+      updateLocation(data.location);
+    });
+  }
+
+  function updateStatus(status) {
+    if (!status) return;
+    const bat = status.battery ?? 0;
+    const batEl = document.getElementById('stat-battery');
+    batEl.textContent = bat + '%';
+    batEl.className = 'stat-value ' + (bat > 50 ? 'green' : bat > 20 ? 'yellow' : 'red');
+
+    document.getElementById('stat-charging').textContent = status.charging ? '⚡ Ja' : 'Nein';
+    document.getElementById('stat-charging').className = 'stat-value ' + (status.charging ? 'green' : '');
+    document.getElementById('stat-wifi').textContent = status.wifi || '–';
+    document.getElementById('stat-mobile').textContent = status.mobile_data ? '✓' : '–';
+    document.getElementById('stat-mobile').className = 'stat-value ' + (status.mobile_data ? 'green' : '');
+
+    const dot = document.getElementById('status-dot');
+    if (status.last_seen?.toDate) {
+      const ago = (Date.now() - status.last_seen.toDate().getTime()) / 1000;
+      dot.className = 'status-dot ' + (ago < 120 ? 'online' : '');
+      document.getElementById('last-seen').textContent =
+        'Zuletzt gesehen: ' + formatAgo(ago);
+    }
+  }
+
+  function updateLocation(loc) {
+    if (!loc?.lat) return;
+    const latlng = [loc.lat, loc.lng];
+    if (currentMarker) { currentMarker.setLatLng(latlng); }
+    else {
+      currentMarker = L.marker(latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="width:16px;height:16px;background:#00b4d8;border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px #00b4d8"></div>',
+          iconSize: [16, 16], iconAnchor: [8, 8]
+        })
+      }).addTo(map);
+      map.setView(latlng, 15);
+    }
+    document.getElementById('location-text').textContent =
+      `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}  ±${Math.round(loc.accuracy || 0)}m`;
+
+    if (showTrail) drawTrail();
+  }
+
+  async function drawTrail() {
+    if (!currentDevice) return;
+    const q = query(
+      collection(db, 'devices', currentDevice, 'locations'),
+      orderBy('timestamp', 'desc'), limit(100)
+    );
+    const snap = await getDocs(q);
+    trailLocations = snap.docs.map(d => [d.data().lat, d.data().lng]);
+    if (trailPolyline) trailPolyline.remove();
+    if (trailLocations.length > 1) {
+      trailPolyline = L.polyline(trailLocations, { color: '#00b4d8', weight: 2, opacity: 0.6 }).addTo(map);
+    }
+  }
+
+  async function loadMedia(deviceId) {
+    const q = query(
+      collection(db, 'devices', deviceId, 'media'),
+      orderBy('timestamp', 'desc'), limit(30)
+    );
+    const snap = await getDocs(q);
+    const grid = document.getElementById('media-grid');
+    grid.innerHTML = '';
+    snap.forEach(d => {
+      const item = d.data();
+      const div = document.createElement('div');
+      div.className = 'media-thumb';
+      const ts = item.timestamp?.toDate ? formatDate(item.timestamp.toDate()) : '';
+      if (item.type === 'photo') {
+        div.innerHTML = `<img src="${item.url}" loading="lazy"><div class="ts">${ts}</div>`;
+        div.onclick = () => openLightbox('photo', item.url);
+      } else {
+        div.innerHTML = `<div class="audio-icon">🎙</div><div class="ts">${ts}</div>`;
+        div.onclick = () => openLightbox('audio', item.url);
+      }
+      grid.appendChild(div);
+    });
+  }
+
+  async function loadLogs(deviceId) {
+    // Calls
+    const callsSnap = await getDocs(
+      query(collection(db, 'devices', deviceId, 'call_logs'), orderBy('timestamp', 'desc'), limit(100))
+    );
+    const callsList = document.getElementById('log-calls');
+    callsList.innerHTML = '';
+    const callTypes = ['', 'Eingehend', 'Ausgehend', 'Verpasst'];
+    callsSnap.forEach(d => {
+      const c = d.data();
+      const div = document.createElement('div');
+      div.className = 'log-item';
+      div.innerHTML = `
+        <div class="log-number">${c.number || 'Unbekannt'}</div>
+        <div class="log-meta">${callTypes[c.type] || ''} · ${formatDuration(c.duration)} · ${formatDate(new Date(c.timestamp))}</div>
+      `;
+      callsList.appendChild(div);
+    });
+
+    // SMS
+    const smsSnap = await getDocs(
+      query(collection(db, 'devices', deviceId, 'sms_logs'), orderBy('timestamp', 'desc'), limit(100))
+    );
+    const smsList = document.getElementById('log-sms');
+    smsList.innerHTML = '';
+    smsSnap.forEach(d => {
+      const s = d.data();
+      const div = document.createElement('div');
+      div.className = 'log-item';
+      div.innerHTML = `
+        <div class="log-number">${s.address || 'Unbekannt'} · ${s.type === 1 ? '↙' : '↗'}</div>
+        <div class="log-body">${s.body || ''}</div>
+        <div class="log-meta">${formatDate(new Date(s.timestamp))}</div>
+      `;
+      smsList.appendChild(div);
+    });
+  }
+
+  function openLightbox(type, url) {
+    const lb = document.getElementById('lightbox');
+    const content = document.getElementById('lightbox-content');
+    lb.style.display = 'flex';
+    if (type === 'photo') {
+      content.innerHTML = `<img src="${url}">`;
+    } else {
+      content.innerHTML = `<audio controls autoplay src="${url}" style="width:300px"></audio>`;
+    }
+  }
+
+  function formatAgo(seconds) {
+    if (seconds < 60) return 'vor wenigen Sekunden';
+    if (seconds < 3600) return `vor ${Math.floor(seconds / 60)} Min.`;
+    if (seconds < 86400) return `vor ${Math.floor(seconds / 3600)} Std.`;
+    return `vor ${Math.floor(seconds / 86400)} Tagen`;
+  }
+
+  function formatDate(date) {
+    return date.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  }
+
+  function formatDuration(secs) {
+    if (!secs) return '0s';
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+</script>
+</body>
+</html>
